@@ -1,6 +1,8 @@
 # ---- Stage 1: Build client ----
 FROM node:20-alpine AS client-build
 WORKDIR /build
+COPY shared/package*.json ./shared/
+RUN cd shared && npm ci
 COPY shared ./shared
 COPY client/package*.json ./client/
 RUN cd client && npm ci
@@ -10,6 +12,8 @@ RUN cd client && npm run build
 # ---- Stage 2: Build server ----
 FROM node:20-alpine AS server-build
 WORKDIR /build
+COPY shared/package*.json ./shared/
+RUN cd shared && npm ci
 COPY shared ./shared
 COPY server/package*.json ./server/
 RUN cd server && npm ci
