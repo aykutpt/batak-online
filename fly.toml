@@ -1,0 +1,28 @@
+# fly.toml — flyctl launch tarafından oluşturulur, burası template
+# app = "batak-online-xxxx"  ← flyctl launch sonrası otomatik dolar
+# primary_region = "ams"     ← seçtiğin bölge
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT     = "3001"
+
+[http_service]
+  internal_port       = 3001
+  force_https         = true
+  auto_stop_machines  = false   # uyku modunu kapat
+  auto_start_machines = true
+  min_machines_running = 1      # her zaman 1 makine ayakta
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval     = "30s"
+    timeout      = "5s"
+    method       = "GET"
+    path         = "/health"
+
+[[vm]]
+  size   = "shared-cpu-1x"
+  memory = "256mb"
