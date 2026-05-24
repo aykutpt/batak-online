@@ -8,7 +8,7 @@ import fs from 'fs';
 import { registerHandlers } from './socket/handlers';
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? 'http://localhost:5173';
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? process.env.RENDER_EXTERNAL_URL ?? 'http://localhost:5173';
 
 const app = express();
 app.use(cors({ origin: CLIENT_ORIGIN }));
