@@ -3,6 +3,8 @@
 Gerçek zamanlı çevrimiçi Türk Batak kart oyunu.  
 React + TypeScript + Socket.IO + Tailwind CSS
 
+**Canlı:** https://batak-online.onrender.com
+
 ---
 
 ## Proje Yapısı
@@ -16,7 +18,7 @@ batak-online/
 ├── server/                    # Node.js + Express + Socket.IO arka ucu
 │   └── src/
 │       ├── index.ts              # HTTP sunucusu + Socket.IO + client/dist statik sunumu
-│       ├── types/server.ts       # Sunucu tarafı tipler (tam el dahil)
+│       ├── types/server.ts       # Sunucu tarafı tipler
 │       ├── rooms/roomManager.ts  # Oda CRUD, oyuncu/bot yönetimi
 │       ├── game/gameEngine.ts    # Yetkili oyun motoru
 │       ├── game/botAI.ts         # Bot stratejisi (sunucu tarafı)
@@ -46,6 +48,19 @@ batak-online/
 
 ---
 
+## Oyun Kuralları
+
+- **İhale:** Minimum 5, herkes pas geçerse ilk oyuncuya zorla 4 ihale verilir
+- **Koz kırılmadan açış yasak:** Koz henüz çıkmadan koz ile el açılamaz (elimde sadece koz kalırsa zorunlu açış)
+- **Yüksek oyna zorunluluğu:** Yerde koz yoksa elindeki yüksek aynı renk kartı oynamak zorundasın
+- **Puanlama:**
+  - Declarer başarılı: `+bidAmount`
+  - Declarer batık: `-bidAmount`
+  - Defender ≥ 1 el: `+elSayısı`
+  - Defender 0 el: `-bidAmount`
+
+---
+
 ## Yerel Geliştirme
 
 ### 1. Bağımlılıkları Kur
@@ -71,17 +86,13 @@ VITE_SERVER_URL=http://localhost:3001
 ### 3. Sunucuyu Başlat
 
 ```bash
-cd server
-npm run dev
-# → http://localhost:3001
+cd server && npm run dev   # → http://localhost:3001
 ```
 
 ### 4. İstemciyi Başlat (ayrı terminalde)
 
 ```bash
-cd client
-npm run dev
-# → http://localhost:5173
+cd client && npm run dev   # → http://localhost:5173
 ```
 
 ### 5. Testleri Çalıştır
@@ -101,146 +112,44 @@ cd shared && npm test   # 25 oyun mantığı birimi testi
 5. Her sekmeyi farklı bir koltukta otur ve hazır işaretle
 6. Boş koltuklara bot ekle veya daha fazla sekme aç
 7. Tüm 4 koltuk dolduktan sonra oda sahibi "Oyunu Başlat"a basar
-8. Her sekme yalnızca kendi elini görür ✓
 
 ---
 
-## Üretim Dağıtımı — Fly.io (Ücretsiz, Uyku Yok)
+## Üretim Dağıtımı — Render + UptimeRobot (Ücretsiz)
 
-Sunucu `client/dist` klasörü varsa statik dosyaları doğrudan servis ettiği için tüm uygulama **tek bir servisle** deploy edilebilir. Ayrı frontend hosting gerekmez.
+Sunucu `client/dist` klasörünü otomatik olarak servis eder; ayrı frontend hosting gerekmez.
 
-### Ön Koşullar
+### 1. Render Deploy
 
-```bash
-# Fly CLI kur
-# Windows: winget install flyio.flyctl
-# macOS:   brew install flyctl
-flyctl auth login
+1. **dashboard.render.com** → GitHub ile kayıt ol (kart gerekmez)
+2. "**New → Blueprint**" → `aykutpt/batak-online` reposunu bağla
+3. `render.yaml` otomatik okunur → "**Apply**"
+4. Deploy biter, URL alırsın: `https://batak-online.onrender.com`
+
+### 2. Uyku Modunu Kapat — UptimeRobot
+
+Render free tier 15 dk hareketsizlikte uyur. UptimeRobot'u şu ayarlarla ekle:
+
+| Alan | Değer |
+|------|-------|
+| Monitor Type | HTTP(s) |
+| URL | `https://batak-online.onrender.com/health` |
+| Interval | 5 minutes |
+
+### render.yaml
+
+```yaml
+services:
+  - type: web
+    name: batak-online
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: frankfurt
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
 ```
-
-### 1. Build Al
-
-```bash
-# Monorepo kökünde
-npm run build --prefix client    # client/dist oluşturulur
-npm run build --prefix server    # server/dist oluşturulur
-```
-
-### 2. Dockerfile Oluştur (server/ klasöründe)
-
-```dockerfile
-FROM node:20-alpine
-
-WORKDIR /app
-
-# Server bağımlılıkları
-COPY server/package*.json ./server/
-RUN cd server && npm ci --omit=dev
-
-# Server build çıktısı
-COPY server/dist ./server/dist
-
-# Client build çıktısı (server tarafından servis edilir)
-COPY client/dist ./client/dist
-
-WORKDIR /app/server
-ENV NODE_ENV=production
-EXPOSE 3001
-
-CMD ["node", "dist/index.js"]
-```
-
-### 3. Fly.io Uygulaması Oluştur
-
-```bash
-# Monorepo kökünde
-flyctl launch --no-deploy
-# → uygulama adı gir, bölge seç (ams → Avrupa için)
-```
-
-Oluşan `fly.toml` dosyasını şu şekilde düzenle:
-
-```toml
-[build]
-  dockerfile = "Dockerfile"
-
-[http_service]
-  internal_port = 3001
-  force_https = true
-
-  [[http_service.checks]]
-    path = "/health"
-    interval = "30s"
-    timeout = "5s"
-
-# Uyku modunu kapat — sunucu her zaman ayakta
-[http_service.concurrency]
-  type = "connections"
-  hard_limit = 100
-
-[[vm]]
-  size = "shared-cpu-1x"
-  memory = "256mb"
-
-[env]
-  NODE_ENV = "production"
-  PORT = "3001"
-```
-
-### 4. Ortam Değişkenini Ayarla
-
-```bash
-# CLIENT_ORIGIN = deploy sonrası aldığın Fly.io URL'i
-# Tek domain olduğu için aynı URL'i kullan:
-flyctl secrets set CLIENT_ORIGIN=https://batak-online.fly.dev
-```
-
-### 5. Deploy Et
-
-```bash
-flyctl deploy
-```
-
-### 6. Uyku Modunu Kapat
-
-Fly.io makinelerinin uyku modunu kapatmak için:
-
-```bash
-flyctl scale count 1 --max-per-region 1
-flyctl machine update --min-machines-running 1
-```
-
-ya da `fly.toml`'a ekle:
-
-```toml
-[http_service]
-  min_machines_running = 1
-```
-
-ardından tekrar `flyctl deploy`.
-
-### Ücretsiz Tier Limitleri
-
-| Kaynak | Ücretsiz Limit | Bu Proje İçin |
-|--------|---------------|---------------|
-| shared-cpu-1x VM | 2.000 saat/ay | ~744 saat (1 VM, 7/24) ✓ |
-| Çıkış trafiği | 160 GB/ay | Kart oyunu için yeterli ✓ |
-| Kalıcı disk | 3 GB | Kullanılmıyor (RAM tabanlı) ✓ |
-
----
-
-## Alternatif: Ayrı Servisler (Vercel + Fly.io)
-
-Eğer global CDN ile daha hızlı frontend istersen:
-
-**Frontend → Vercel**
-```bash
-cd client && npm run build
-# Vercel'de: build command = "npm run build", publish dir = "dist"
-# Env: VITE_SERVER_URL=https://batak-online.fly.dev
-```
-
-**Backend → Fly.io** (yukarıdaki adımlarla, CLIENT_ORIGIN'i Vercel URL'ine ayarla)
 
 ---
 
@@ -291,26 +200,24 @@ cd client && npm run build
 - **Sunucu yetkilidir**: İstemci yalnızca istek gönderir, sunucu doğrular
 - Özel eller **yalnızca** ilgili oyuncunun socket ID'sine gönderilir
 - Tüm hamle doğrulamaları sunucu tarafında tekrar yapılır
-- İstemci tarafı kural uygulama sadece UX içindir
 
 ---
 
 ## Kısıtlamalar
 
-1. **Bellek depolama**: Aktif oyunlar yalnızca sunucu RAM'inde tutulur — sunucu yeniden başlarsa oyunlar kaybolur. Redis veya PostgreSQL eklemek için `roomManager.ts` soyutlanmıştır
+1. **Bellek depolama**: Aktif oyunlar yalnızca sunucu RAM'inde tutulur — sunucu yeniden başlarsa oyunlar kaybolur
 2. **Bot AI**: Basit sezgisel; kalan kartları takip etmez
 3. **Yalnızca 1 oyun modu**: Klasik bireysel Batak; takım versiyonları yok
-4. **Yeniden bağlantı süresi**: Şu anda sınırsız; üretimde süre sınırı eklenebilir
+4. **Yeniden bağlantı süresi**: Şu anda sınırsız
 
 ---
 
 ## Sonraki İyileştirmeler
 
-1. **Redis depolama** — sunucu yeniden başlatma direnci + yatay ölçekleme
+1. **Redis depolama** — sunucu yeniden başlatma direnci
 2. **Gelişmiş Bot AI** — sayma kartlar, olasılık hesabı
-3. **Daha fazla Batak varyantı** — Açık Batak, Rami Batak, Takım modu
+3. **Daha fazla Batak varyantı** — Açık Batak, Takım modu
 4. **Animasyonlar** — Framer Motion ile kart hareketi
 5. **Ses efektleri** — kart oynama / el kazanma sesleri
-6. **Oyuncu avatarları + sohbet** — lobi ve oyun içi mesajlaşma
-7. **Turnuva modu** — eleme tabloları
-8. **Mobil uygulama** — React Native ile aynı paylaşılan mantık
+6. **Oyuncu avatarları + sohbet**
+7. **Mobil uygulama** — React Native

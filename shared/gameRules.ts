@@ -76,15 +76,18 @@ export function getLegalCards(
   const suited = hand.filter((c) => c.suit === leadSuit);
   if (suited.length === 0) return hand; // o renk yok, her şeyi oynayabilir
 
-  // Yerde açık karttan daha yüksek aynı renk varsa zorunlu
-  if (currentTrick && currentTrick.length > 0) {
-    const leadCards = currentTrick.filter((tc) => tc.card.suit === leadSuit);
-    if (leadCards.length > 0) {
-      const highest = leadCards.reduce((best, cur) =>
-        RANK_VALUE[cur.card.rank] > RANK_VALUE[best.card.rank] ? cur : best,
-      );
-      const higher = suited.filter((c) => RANK_VALUE[c.rank] > RANK_VALUE[highest.card.rank]);
-      if (higher.length > 0) return higher;
+  // Trick'te koz yoksa yüksek oyna zorunluluğu var; koz atıldıysa kazanamayacağın için serbest
+  if (currentTrick && currentTrick.length > 0 && trumpSuit) {
+    const trumpInTrick = currentTrick.some((tc) => tc.card.suit === trumpSuit);
+    if (!trumpInTrick) {
+      const leadCards = currentTrick.filter((tc) => tc.card.suit === leadSuit);
+      if (leadCards.length > 0) {
+        const highest = leadCards.reduce((best, cur) =>
+          RANK_VALUE[cur.card.rank] > RANK_VALUE[best.card.rank] ? cur : best,
+        );
+        const higher = suited.filter((c) => RANK_VALUE[c.rank] > RANK_VALUE[highest.card.rank]);
+        if (higher.length > 0) return higher;
+      }
     }
   }
 
