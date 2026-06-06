@@ -140,12 +140,11 @@ export function calculateRoundScore(params: {
 
   const pointsGained = {} as Record<Seat, number>;
   for (const seat of SEATS) {
-    pointsGained[seat] =
-      seat === declarerSeat
-        ? declarerSucceeded
-          ? bidAmount * 10
-          : -(bidAmount * 10)
-        : tricksWon[seat];
+    if (seat === declarerSeat) {
+      pointsGained[seat] = declarerSucceeded ? bidAmount * 10 : -bidAmount;
+    } else {
+      pointsGained[seat] = tricksWon[seat] === 0 ? -5 : tricksWon[seat];
+    }
   }
 
   const totalScores = {} as Record<Seat, number>;

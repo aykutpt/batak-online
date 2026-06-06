@@ -351,12 +351,19 @@ function endRound(io: Server, room: ServerRoom): void {
   if (checkGameEnd(gs.totalScores, room.config, gs.currentRound)) {
     gs.phase = 'game_over';
     room.phase = 'game_over';
+    broadcastGameState(io, room);
   } else {
     gs.phase = 'round_summary';
     room.phase = 'round_summary';
-  }
+    broadcastGameState(io, room);
 
-  broadcastGameState(io, room);
+    // Sonraki eli 5 saniye sonra otomatik başlat
+    setTimeout(() => {
+      const currentRoom = getRoom(room.code);
+      if (!currentRoom?.gameState || currentRoom.gameState.phase !== 'round_summary') return;
+      startNextRound(io, currentRoom);
+    }, 5000);
+  }
 }
 
 // ─── Next Round ───────────────────────────────────────────────────────────────
