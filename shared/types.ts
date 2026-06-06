@@ -71,6 +71,7 @@ export interface PublicGameState {
   highestBidderSeat: Seat | null;
   declarerSeat: Seat | null;
   trumpSuit: Suit | null;
+  trumpBroken: boolean;
   currentTrick: PlayedCard[];
   leadSuit: Suit | null;
   currentTurnSeat: Seat | null;

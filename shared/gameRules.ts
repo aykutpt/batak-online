@@ -57,26 +57,62 @@ export function sortHand(hand: Card[]): Card[] {
 
 // ─── Legal Move Logic ─────────────────────────────────────────────────────────
 
-export function getLegalCards(hand: Card[], leadSuit: Suit | null): Card[] {
-  if (!leadSuit) return hand;
+export function getLegalCards(
+  hand: Card[],
+  leadSuit: Suit | null,
+  trumpSuit?: Suit | null,
+  trumpBroken?: boolean,
+  currentTrick?: PlayedCard[],
+): Card[] {
+  if (!leadSuit) {
+    // Açış: koz henüz çıkmadıysa koz ile açılamaz
+    if (trumpSuit && trumpBroken === false) {
+      const nonTrump = hand.filter((c) => c.suit !== trumpSuit);
+      return nonTrump.length > 0 ? nonTrump : hand; // elimde sadece koz varsa zorunlu açış
+    }
+    return hand;
+  }
+
   const suited = hand.filter((c) => c.suit === leadSuit);
-  return suited.length > 0 ? suited : hand;
+  if (suited.length === 0) return hand; // o renk yok, her şeyi oynayabilir
+
+  // Yerde açık karttan daha yüksek aynı renk varsa zorunlu
+  if (currentTrick && currentTrick.length > 0) {
+    const leadCards = currentTrick.filter((tc) => tc.card.suit === leadSuit);
+    if (leadCards.length > 0) {
+      const highest = leadCards.reduce((best, cur) =>
+        RANK_VALUE[cur.card.rank] > RANK_VALUE[best.card.rank] ? cur : best,
+      );
+      const higher = suited.filter((c) => RANK_VALUE[c.rank] > RANK_VALUE[highest.card.rank]);
+      if (higher.length > 0) return higher;
+    }
+  }
+
+  return suited;
 }
 
 export function isLegalMove(
   card: Card,
   hand: Card[],
   leadSuit: Suit | null,
+  trumpSuit?: Suit | null,
+  trumpBroken?: boolean,
+  currentTrick?: PlayedCard[],
 ): { legal: boolean; reason?: string } {
-  if (!leadSuit) return { legal: true };
-  const hasLeadSuit = hand.some((c) => c.suit === leadSuit);
-  if (hasLeadSuit && card.suit !== leadSuit) {
+  const legal = getLegalCards(hand, leadSuit, trumpSuit, trumpBroken, currentTrick);
+  if (legal.some((c) => c.id === card.id)) return { legal: true };
+
+  if (!leadSuit) {
+    return { legal: false, reason: 'Koz henüz çıkmadı, koz ile açamazsın.' };
+  }
+  const suited = hand.filter((c) => c.suit === leadSuit);
+  if (suited.length > 0 && card.suit !== leadSuit) {
     return {
       legal: false,
       reason: `Geçersiz hamle: ${SUIT_NAMES[leadSuit]} renginden kartın olduğu için onu oynamalısın.`,
     };
   }
-  return { legal: true };
+  return { legal: false, reason: 'Daha yüksek bir kart oynamalısın.' };
 }
 
 // ─── Trick Resolution ─────────────────────────────────────────────────────────

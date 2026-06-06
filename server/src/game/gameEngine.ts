@@ -64,6 +64,7 @@ export function buildPublicGameState(room: ServerRoom): PublicGameState {
     highestBidderSeat: gs.highestBidderSeat,
     declarerSeat: gs.declarerSeat,
     trumpSuit: gs.trumpSuit,
+    trumpBroken: gs.trumpBroken,
     currentTrick: gs.currentTrick,
     leadSuit: gs.leadSuit,
     currentTurnSeat: gs.currentTurnSeat,
@@ -111,6 +112,7 @@ export function startGame(io: Server, room: ServerRoom): void {
     highestBidderSeat: null,
     declarerSeat: null,
     trumpSuit: null,
+    trumpBroken: false,
     currentTrick: [],
     leadSuit: null,
     currentTurnSeat: null,
@@ -148,6 +150,7 @@ function dealRound(io: Server, room: ServerRoom): void {
   gs.highestBidderSeat = null;
   gs.declarerSeat = null;
   gs.trumpSuit = null;
+  gs.trumpBroken = false;
   gs.currentTrick = [];
   gs.leadSuit = null;
   gs.currentTurnSeat = null;
@@ -193,10 +196,24 @@ export function handleBid(
 
   // All 4 bids placed
   if (!gs.highestBidderSeat) {
-    // Everyone passed — redeal
-    gs.currentRound = gs.currentRound; // keep round number
+    // Herkes pas — ilk ihale verenin ihalesi 4 olarak kalır
+    const forcedBidder = gs.bids[0].seat;
+    gs.highestBid = 4;
+    gs.highestBidderSeat = forcedBidder;
+    gs.declarerSeat = forcedBidder;
+    gs.phase = 'trump_selection';
+    gs.currentBidderSeat = null;
+    room.phase = 'trump_selection';
     broadcastGameState(io, room);
-    setTimeout(() => dealRound(io, room), 1200);
+    const forcedDeclarer = getPlayerAtSeat(room, forcedBidder);
+    if (forcedDeclarer?.isBot) {
+      setTimeout(() => {
+        const currentRoom = getRoom(room.code);
+        if (!currentRoom || currentRoom.gameState?.phase !== 'trump_selection') return;
+        const trump = chooseBotTrump(forcedDeclarer.hand);
+        handleTrumpSelection(io, currentRoom, forcedDeclarer, trump);
+      }, BOT_DELAY_MS);
+    }
     return null;
   }
 
@@ -259,7 +276,7 @@ export function handlePlayCard(
   const card = player.hand.find((c) => c.id === cardId);
   if (!card) return 'Bu kart elinde yok.';
 
-  const { legal, reason } = isLegalMove(card, player.hand, gs.leadSuit);
+  const { legal, reason } = isLegalMove(card, player.hand, gs.leadSuit, gs.trumpSuit, gs.trumpBroken, gs.currentTrick);
   if (!legal) return reason ?? 'Geçersiz hamle.';
 
   // Remove card from hand
@@ -271,6 +288,11 @@ export function handlePlayCard(
     order: gs.currentTrick.length,
   };
   gs.currentTrick.push(playedCard);
+
+  // Koz çıkışı: koz bir el içinde ilk kez oynandığında koz kırılır
+  if (!gs.trumpBroken && gs.trumpSuit && card.suit === gs.trumpSuit) {
+    gs.trumpBroken = true;
+  }
 
   if (!gs.leadSuit) gs.leadSuit = card.suit;
 
@@ -435,7 +457,7 @@ function scheduleBotPlay(io: Server, room: ServerRoom): void {
     if (!bot?.isBot) return;
 
     const gs2 = currentRoom.gameState;
-    const legal = getLegalCards(bot.hand, gs2.leadSuit);
+    const legal = getLegalCards(bot.hand, gs2.leadSuit, gs2.trumpSuit, gs2.trumpBroken, gs2.currentTrick);
     const card = chooseBotCard(
       bot.hand,
       gs2.leadSuit,
