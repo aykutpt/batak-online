@@ -10,6 +10,68 @@ import { getPlayerAtSeat, resetPlayersForNewRound, getRoom } from '../rooms/room
 import { estimateBotBid, chooseBotTrump, chooseBotCard } from './botAI';
 
 const BOT_DELAY_MS = 900;
+const BID_TIMEOUT_MS = 20_000;
+const PLAY_TIMEOUT_MS = 10_000;
+
+// ─── Room Timers ──────────────────────────────────────────────────────────────
+
+const roomTimers = new Map<string, { bid?: ReturnType<typeof setTimeout>; play?: ReturnType<typeof setTimeout> }>();
+
+function clearBidTimer(roomCode: string): void {
+  const t = roomTimers.get(roomCode);
+  if (t?.bid) { clearTimeout(t.bid); t.bid = undefined; }
+}
+
+function clearPlayTimer(roomCode: string): void {
+  const t = roomTimers.get(roomCode);
+  if (t?.play) { clearTimeout(t.play); t.play = undefined; }
+}
+
+function clearAllTimers(roomCode: string): void {
+  clearBidTimer(roomCode);
+  clearPlayTimer(roomCode);
+}
+
+function setupBidTimer(io: Server, room: ServerRoom): void {
+  const gs = room.gameState;
+  clearBidTimer(room.code);
+  if (!gs?.currentBidderSeat) { if (gs) gs.bidDeadline = null; return; }
+  const player = getPlayerAtSeat(room, gs.currentBidderSeat);
+  if (!player || player.isBot) { gs.bidDeadline = null; return; }
+
+  gs.bidDeadline = Date.now() + BID_TIMEOUT_MS;
+  const expectedSeat = gs.currentBidderSeat;
+  if (!roomTimers.has(room.code)) roomTimers.set(room.code, {});
+  roomTimers.get(room.code)!.bid = setTimeout(() => {
+    const r = getRoom(room.code);
+    if (!r?.gameState || r.gameState.phase !== 'bidding' || r.gameState.currentBidderSeat !== expectedSeat) return;
+    const p = getPlayerAtSeat(r, expectedSeat);
+    if (!p) return;
+    handleBid(io, r, p, 'pass');
+  }, BID_TIMEOUT_MS);
+}
+
+function setupPlayTimer(io: Server, room: ServerRoom): void {
+  const gs = room.gameState;
+  clearPlayTimer(room.code);
+  if (!gs?.currentTurnSeat) { if (gs) gs.playDeadline = null; return; }
+  const player = getPlayerAtSeat(room, gs.currentTurnSeat);
+  if (!player || player.isBot) { gs.playDeadline = null; return; }
+
+  gs.playDeadline = Date.now() + PLAY_TIMEOUT_MS;
+  const expectedSeat = gs.currentTurnSeat;
+  if (!roomTimers.has(room.code)) roomTimers.set(room.code, {});
+  roomTimers.get(room.code)!.play = setTimeout(() => {
+    const r = getRoom(room.code);
+    if (!r?.gameState || r.gameState.phase !== 'playing' || r.gameState.currentTurnSeat !== expectedSeat) return;
+    const p = getPlayerAtSeat(r, expectedSeat);
+    if (!p) return;
+    const gs2 = r.gameState;
+    const legal = getLegalCards(p.hand, gs2.leadSuit, gs2.trumpSuit, gs2.trumpBroken, gs2.currentTrick);
+    const card = legal[Math.floor(Math.random() * legal.length)];
+    handlePlayCard(io, r, p, card.id);
+  }, PLAY_TIMEOUT_MS);
+}
 
 // ─── State Builders ───────────────────────────────────────────────────────────
 
@@ -66,6 +128,8 @@ export function buildPublicGameState(room: ServerRoom): PublicGameState {
     trumpSuit: gs.trumpSuit,
     trumpBroken: gs.trumpBroken,
     currentTrick: gs.currentTrick,
+    bidDeadline: gs.bidDeadline,
+    playDeadline: gs.playDeadline,
     leadSuit: gs.leadSuit,
     currentTurnSeat: gs.currentTurnSeat,
     roundResults: gs.roundResults,
@@ -116,6 +180,8 @@ export function startGame(io: Server, room: ServerRoom): void {
     currentTrick: [],
     leadSuit: null,
     currentTurnSeat: null,
+    bidDeadline: null,
+    playDeadline: null,
     roundResults: [],
     totalScores,
   };
@@ -154,11 +220,12 @@ function dealRound(io: Server, room: ServerRoom): void {
   gs.currentTrick = [];
   gs.leadSuit = null;
   gs.currentTurnSeat = null;
+  gs.playDeadline = null;
   room.phase = 'bidding';
 
+  setupBidTimer(io, room);
   broadcastGameState(io, room);
   sendPrivateHandToAll(io, room);
-
   scheduleBotBid(io, room);
 }
 
@@ -177,6 +244,9 @@ export function handleBid(
   const { valid, reason } = validateBid(value, gs.highestBid);
   if (!valid) return reason ?? 'Geçersiz ihale.';
 
+  clearBidTimer(room.code);
+  gs.bidDeadline = null;
+
   gs.bids.push({ seat: player.seat, value });
 
   if (value !== 'pass') {
@@ -189,6 +259,7 @@ export function handleBid(
 
   if (bidsCount < 4) {
     gs.currentBidderSeat = nextBidder;
+    setupBidTimer(io, room);
     broadcastGameState(io, room);
     scheduleBotBid(io, room);
     return null;
@@ -256,6 +327,7 @@ export function handleTrumpSelection(
   gs.currentTurnSeat = gs.declarerSeat;
   room.phase = 'playing';
 
+  setupPlayTimer(io, room);
   broadcastGameState(io, room);
   scheduleBotPlay(io, room);
   return null;
@@ -279,6 +351,9 @@ export function handlePlayCard(
   const { legal, reason } = isLegalMove(card, player.hand, gs.leadSuit, gs.trumpSuit, gs.trumpBroken, gs.currentTrick);
   if (!legal) return reason ?? 'Geçersiz hamle.';
 
+  clearPlayTimer(room.code);
+  gs.playDeadline = null;
+
   // Remove card from hand
   player.hand = player.hand.filter((c) => c.id !== cardId);
 
@@ -300,10 +375,10 @@ export function handlePlayCard(
   sendPrivateHand(io, room, player);
 
   if (gs.currentTrick.length === 4) {
-    // Resolve trick after brief delay
     setTimeout(() => resolveTrick(io, room), 1400);
   } else {
     gs.currentTurnSeat = getNextSeat(player.seat);
+    setupPlayTimer(io, room);
     broadcastGameState(io, room);
     scheduleBotPlay(io, room);
   }
@@ -338,6 +413,7 @@ function resolveTrick(io: Server, room: ServerRoom): void {
   }
 
   gs.currentTurnSeat = winnerSeat;
+  setupPlayTimer(io, room);
   broadcastGameState(io, room);
   scheduleBotPlay(io, room);
 }
@@ -345,6 +421,7 @@ function resolveTrick(io: Server, room: ServerRoom): void {
 // ─── Round End ───────────────────────────────────────────────────────────────
 
 function endRound(io: Server, room: ServerRoom): void {
+  clearAllTimers(room.code);
   const gs = room.gameState!;
 
   const tricksWon = {} as Record<Seat, number>;
@@ -405,6 +482,7 @@ export function startNextRound(io: Server, room: ServerRoom): string | null {
 // ─── Restart Game ─────────────────────────────────────────────────────────────
 
 export function restartGame(io: Server, room: ServerRoom): void {
+  clearAllTimers(room.code);
   for (const player of room.players.values()) {
     player.totalScore = 0;
     player.tricksWon = 0;

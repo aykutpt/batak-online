@@ -26,6 +26,8 @@ export interface ServerGameState {
   trumpBroken: boolean;
   currentTrick: PlayedCard[];
   leadSuit: Suit | null;
+  bidDeadline: number | null;
+  playDeadline: number | null;
   currentTurnSeat: Seat | null;
   roundResults: RoundResult[];
   totalScores: Record<Seat, number>;

@@ -35,6 +35,8 @@ export interface OfflineState {
   currentTrick: PlayedCard[];
   leadSuit: Suit | null;
   currentTurnSeat: Seat | null;
+  bidDeadline: number | null;
+  playDeadline: number | null;
   roundResults: ReturnType<typeof calculateRoundScore>[];
   totalScores: Record<Seat, number>;
   illegalMoveMessage: string;
@@ -66,6 +68,8 @@ export function buildInitialOfflineState(
     currentTrick: [],
     leadSuit: null,
     currentTurnSeat: null,
+    bidDeadline: null,
+    playDeadline: null,
     roundResults: [],
     totalScores: zeroes,
     illegalMoveMessage: '',
@@ -99,6 +103,8 @@ export function toPublicGameState(state: OfflineState): PublicGameState {
     trumpSuit: state.trumpSuit,
     trumpBroken: state.trumpBroken,
     currentTrick: state.currentTrick,
+    bidDeadline: null,
+    playDeadline: null,
     leadSuit: state.leadSuit,
     currentTurnSeat: state.currentTurnSeat,
     roundResults: state.roundResults,

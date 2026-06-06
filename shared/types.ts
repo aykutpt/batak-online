@@ -75,6 +75,8 @@ export interface PublicGameState {
   currentTrick: PlayedCard[];
   leadSuit: Suit | null;
   currentTurnSeat: Seat | null;
+  bidDeadline: number | null;
+  playDeadline: number | null;
   roundResults: RoundResult[];
   players: PublicPlayerInfo[];
   config: GameConfig;
