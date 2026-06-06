@@ -77,7 +77,20 @@ export function getLegalCards(
   if (suited.length === 0) {
     if (trumpSuit) {
       const trumpCards = hand.filter((c) => c.suit === trumpSuit);
-      if (trumpCards.length > 0) return trumpCards; // koz atmak zorunlu
+      if (trumpCards.length > 0) {
+        // Trick'te zaten koz varsa, o kozdan daha yüksek koz atılmalı
+        if (currentTrick && currentTrick.length > 0) {
+          const trumpsInTrick = currentTrick.filter((tc) => tc.card.suit === trumpSuit);
+          if (trumpsInTrick.length > 0) {
+            const highestTrumpInTrick = trumpsInTrick.reduce((best, cur) =>
+              RANK_VALUE[cur.card.rank] > RANK_VALUE[best.card.rank] ? cur : best,
+            );
+            const higherTrumps = trumpCards.filter((c) => RANK_VALUE[c.rank] > RANK_VALUE[highestTrumpInTrick.card.rank]);
+            if (higherTrumps.length > 0) return higherTrumps;
+          }
+        }
+        return trumpCards; // üste çıkacak koz yoksa herhangi bir koz
+      }
     }
     return hand; // koz da yok, her şeyi oynayabilir
   }
@@ -123,8 +136,11 @@ export function isLegalMove(
   }
   if (suited.length === 0 && trumpSuit) {
     const trumpCards = hand.filter((c) => c.suit === trumpSuit);
-    if (trumpCards.length > 0 && card.suit !== trumpSuit) {
-      return { legal: false, reason: 'Elinde koz var, koz atmak zorundasın.' };
+    if (trumpCards.length > 0) {
+      if (card.suit !== trumpSuit) {
+        return { legal: false, reason: 'Elinde koz var, koz atmak zorundasın.' };
+      }
+      return { legal: false, reason: 'Yerde daha yüksek koz var, üste çıkman gerekiyor.' };
     }
   }
   return { legal: false, reason: 'Daha yüksek bir kart oynamalısın.' };
