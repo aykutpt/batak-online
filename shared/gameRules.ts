@@ -143,7 +143,7 @@ export function calculateRoundScore(params: {
     if (seat === declarerSeat) {
       pointsGained[seat] = declarerSucceeded ? bidAmount * 10 : -bidAmount;
     } else {
-      pointsGained[seat] = tricksWon[seat] === 0 ? -5 : tricksWon[seat];
+      pointsGained[seat] = tricksWon[seat] === 0 ? -bidAmount : tricksWon[seat];
     }
   }
 
