@@ -74,7 +74,13 @@ export function getLegalCards(
   }
 
   const suited = hand.filter((c) => c.suit === leadSuit);
-  if (suited.length === 0) return hand; // o renk yok, her şeyi oynayabilir
+  if (suited.length === 0) {
+    if (trumpSuit) {
+      const trumpCards = hand.filter((c) => c.suit === trumpSuit);
+      if (trumpCards.length > 0) return trumpCards; // koz atmak zorunlu
+    }
+    return hand; // koz da yok, her şeyi oynayabilir
+  }
 
   // Trick'te koz yoksa yüksek oyna zorunluluğu var; koz atıldıysa kazanamayacağın için serbest
   if (currentTrick && currentTrick.length > 0 && trumpSuit) {
@@ -114,6 +120,12 @@ export function isLegalMove(
       legal: false,
       reason: `Geçersiz hamle: ${SUIT_NAMES[leadSuit]} renginden kartın olduğu için onu oynamalısın.`,
     };
+  }
+  if (suited.length === 0 && trumpSuit) {
+    const trumpCards = hand.filter((c) => c.suit === trumpSuit);
+    if (trumpCards.length > 0 && card.suit !== trumpSuit) {
+      return { legal: false, reason: 'Elinde koz var, koz atmak zorundasın.' };
+    }
   }
   return { legal: false, reason: 'Daha yüksek bir kart oynamalısın.' };
 }
