@@ -31,6 +31,7 @@ export interface OfflineState {
   highestBidderSeat: Seat | null;
   declarerSeat: Seat | null;
   trumpSuit: Suit | null;
+  trumpBroken: boolean;
   currentTrick: PlayedCard[];
   leadSuit: Suit | null;
   currentTurnSeat: Seat | null;
@@ -61,6 +62,7 @@ export function buildInitialOfflineState(
     highestBidderSeat: null,
     declarerSeat: null,
     trumpSuit: null,
+    trumpBroken: false,
     currentTrick: [],
     leadSuit: null,
     currentTurnSeat: null,
@@ -95,6 +97,7 @@ export function toPublicGameState(state: OfflineState): PublicGameState {
     highestBidderSeat: state.highestBidderSeat,
     declarerSeat: state.declarerSeat,
     trumpSuit: state.trumpSuit,
+    trumpBroken: state.trumpBroken,
     currentTrick: state.currentTrick,
     leadSuit: state.leadSuit,
     currentTurnSeat: state.currentTurnSeat,
@@ -131,6 +134,7 @@ export function dealRound(state: OfflineState): OfflineState {
     highestBidderSeat: null,
     declarerSeat: null,
     trumpSuit: null,
+    trumpBroken: false,
     currentTrick: [],
     leadSuit: null,
     currentTurnSeat: null,
@@ -157,8 +161,17 @@ export function applyBid(state: OfflineState, seat: Seat, value: BidValue): Offl
 
   // All 4 bids in
   if (!newHighestSeat) {
-    // Everyone passed — redeal
-    return dealRound({ ...state, bids: [], currentBidderSeat: null });
+    // Herkes pas — ilk ihale verene zorla 4
+    const forcedBidder = newBids[0].seat;
+    return {
+      ...state,
+      bids: newBids,
+      phase: 'trump_selection',
+      declarerSeat: forcedBidder,
+      currentBidderSeat: null,
+      highestBid: 4,
+      highestBidderSeat: forcedBidder,
+    };
   }
 
   return {
@@ -177,6 +190,7 @@ export function applyTrump(state: OfflineState, suit: Suit): OfflineState {
     ...state,
     phase: 'playing',
     trumpSuit: suit,
+    trumpBroken: false,
     currentTurnSeat: state.declarerSeat,
     currentTrick: [],
     leadSuit: null,
@@ -194,13 +208,14 @@ export function applyPlayCard(
   if (!card) return { state, error: 'Kart bulunamadı.' };
 
   if (!player.isBot) {
-    const { legal, reason } = isLegalMove(card, player.hand, state.leadSuit);
+    const { legal, reason } = isLegalMove(card, player.hand, state.leadSuit, state.trumpSuit, state.trumpBroken, state.currentTrick);
     if (!legal) return { state: { ...state, illegalMoveMessage: reason ?? 'Geçersiz hamle.' }, error: reason };
   }
 
   const newHand = player.hand.filter((c) => c.id !== cardId);
   const newTrick: PlayedCard[] = [...state.currentTrick, { seat, card, order: state.currentTrick.length }];
   const newLeadSuit = state.leadSuit ?? card.suit;
+  const newTrumpBroken = state.trumpBroken || (state.trumpSuit != null && card.suit === state.trumpSuit);
   const nextTurn = getNextSeat(seat);
 
   const updatedPlayers = {
@@ -215,6 +230,7 @@ export function applyPlayCard(
         players: updatedPlayers,
         currentTrick: newTrick,
         leadSuit: newLeadSuit,
+        trumpBroken: newTrumpBroken,
         currentTurnSeat: nextTurn,
         illegalMoveMessage: '',
       },
@@ -235,12 +251,12 @@ export function applyPlayCard(
       state: {
         ...state,
         players: updatedWithWin,
-        currentTrick: newTrick, // show for animation
+        currentTrick: newTrick,
         leadSuit: newLeadSuit,
+        trumpBroken: newTrumpBroken,
         currentTurnSeat: winnerSeat,
         phase: 'playing' as GamePhase,
         illegalMoveMessage: '',
-        // trick will be cleared by caller after animation delay
       },
     };
   }
